@@ -1,1 +1,7 @@
-# ECig_SmokingQuitters
+## Electronic cigarette use after smoking cessation and lung cancer risk 
+# Description
+The data supporting the findings of this study are derived from the Korean National Health Insurance Service (NHIS) health screening and claims databases. Individual-level data are not publicly available because they contain sensitive personal health information and are protected under NHIS data governance and privacy regulations. For research purposes, de-identified data are accessible upon application through the NHIS Big Data Platform. Applicants are required to submit a research proposal (including study aims, cohort definition, and a data specification), documentation of Institutional Review Board approval, and other materials requested by NHIS. Applications undergo administrative and data-provision review, and access is granted only for approved variables and time periods. Approved users can analyze the data through NHIS-designated secure analysis environments. The review and approval timeline is determined by NHIS and may vary by the complexity of the requested dataset and operational demand. Decisions are typically issued after completion of the review process (often within several weeks, but potentially longer for customized datasets). Further information on eligibility, required documents, fees, and access procedures is available at: https://nhiss.nhis.or.kr/.
+
+# Prerequisites
+SAS version 9.4 and R version 4.3.3.
+De-identified NHIS analytic raw datasets are accessible upon application through the NHIS Big Data Platform, subject to NHIS approval and data extraction procedures, and can be analyzed within NHIS-designated secure analysis environments.
