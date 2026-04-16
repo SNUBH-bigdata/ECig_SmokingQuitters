@@ -1,0 +1,144 @@
+/* =====================================================================================
+   Project: Smoking, E-cigarette use, Lung Cancer, and Mortality Risk Analysis
+   Purpose: Baseline Characteristics, Incidence & Cox PH
+   ===================================================================================== */
+
+/* -------------------------------------------------------------------------------------
+   [1] Statistical Macros Definition
+   ------------------------------------------------------------------------------------- */
+
+/* 1-1. Baseline Tables */
+%macro make_baseline_tables(ds=, group_var=);
+    proc freq data=&ds;
+        tables &group_var*(sex household_income cci_group physical_activity alcohol_consumption underlying_copd underlying_ipf) / chisq;
+    run;
+
+    proc means data=&ds mean std q1 median q3;
+        class &group_var; var age bmi pack_years_smoked; 
+    run;
+%mend;
+
+/* 1-2. Baseline & Incidence Loop Wrapper */
+%macro run_baseline_and_incidence(data=);
+    %let groups1 = smoking_status_3g smoking_status_5g smoking_status_6g;
+    %let num_groups1 = %sysfunc(countw(&groups1));
+    %do i = 1 %to &num_groups1;
+        %let g = %scan(&groups1, &i);
+        %make_baseline_tables(ds=&data, group_var=&g);
+        
+        %calc_incidence(data=&data, group=&g, time_var=fu_days_cancer, event_var=lung_cancer_incidence);
+        %calc_incidence(data=&data, group=&g, time_var=fu_days_death, event_var=all_cause_mortality);
+        %calc_incidence(data=&data, group=&g, time_var=fu_days_death, event_var=lung_cancer_specific_death);
+    %end;
+
+%mend;
+
+
+
+/* 1-3. Cox PH Models */
+%macro run_cox_models(data=, exposure=, outcome=, time_var=, ref_list=);
+    %let num_refs = %sysfunc(countw(&ref_list));
+    
+    %do i = 1 %to &num_refs;
+        %let ref_val = %scan(&ref_list, &i);
+        
+        /* Model 1: Adjusted for Age, Sex, Pack_years */
+        title "Cox PH - &outcome (&exposure, Ref: &ref_val, Model 1: Age, Sex, Pack_years) - &data";
+        proc phreg data=&data;
+            class &exposure(ref="&ref_val") sex / ref=first;
+            model &time_var * &outcome(0) = &exposure age sex pack_years_smoked / rl;
+        run;
+
+        /* Model 2: Fully Adjusted */
+        title "Cox PH - &outcome (&exposure, Ref: &ref_val, Model 2: Model 1 + Additional covariates) - &data";
+        proc phreg data=&data;
+            class &exposure(ref="&ref_val") sex household_income cci_group physical_activity alcohol_consumption underlying_copd underlying_ipf / ref=first;
+            model &time_var * &outcome(0) = &exposure age sex pack_years_smoked bmi household_income alcohol_consumption physical_activity cci_group underlying_copd underlying_ipf / rl;
+        run;
+
+    %end;
+    title;
+%mend;
+
+
+/* 1-4. Execute all Cox PH Models Wrapper */
+%macro run_all_models(data=);
+    %let outcomes = lung_cancer_incidence all_cause_mortality lung_cancer_specific_death;
+    %let timevars = fu_days_cancer fu_days_death fu_days_death;
+
+    %do o = 1 %to 3;
+        %let outc = %scan(&outcomes, &o);
+        %let tvar = %scan(&timevars, &o);
+        
+        %run_cox_models(data=&data, exposure=smoking_status_3g, outcome=&outc, time_var=&tvar, ref_list=1 2 3);
+        %run_cox_models(data=&data, exposure=smoking_status_5g, outcome=&outc, time_var=&tvar, ref_list=1 3 5);
+        %run_cox_models(data=&data, exposure=smoking_status_6g, outcome=&outc, time_var=&tvar, ref_list=1 3 5);
+   %end;
+%mend;
+
+
+/* 1-5. Competing Risk Analysis (Fine-Gray Model) */
+
+/* Outcome coding: 0=Censored, 1=Other cause death, 2=Lung cancer-specific death (LCSD) */
+
+%macro run_competing_risk(data=, exposure=, outcome=, time_var=, eventcode=, ref_list=);
+    %let num_refs = %sysfunc(countw(&ref_list));
+    
+    %do i = 1 %to &num_refs;
+        %let ref_val = %scan(&ref_list, &i);
+
+        title "Competing Risk (Fine-Gray) - &outcome (Event=&eventcode, &exposure Ref: &ref_val, Model 1: Adjusted for Age, Sex, Pack_years) - &data";
+        proc phreg data=&data;
+            class &exposure(ref="&ref_val") sex / ref=first;
+            model &time_var * &outcome(0) = &exposure age sex pack_years_smoked / rl eventcode=&eventcode;
+        run;
+        
+        title "Competing Risk (Fine-Gray) - &outcome (Event=&eventcode, &exposure Ref: &ref_val, Model 2: Model 1 + Additional Covariates) - &data";
+        proc phreg data=&data;
+            class &exposure(ref="&ref_val") sex household_income cci_group physical_activity alcohol_consumption underlying_copd underlying_ipf / ref=first;
+            model &time_var * &outcome(0) = &exposure age sex pack_years_smoked bmi household_income alcohol_consumption physical_activity cci_group underlying_copd underlying_ipf / rl eventcode=&eventcode;
+        run;
+
+    %end;
+    title;
+%mend;
+
+
+
+%macro run_all_competing_risks(data=);
+  
+    %run_competing_risk(data=&data, exposure=smoking_status_3g, outcome=competing_event_lcsd, time_var=fu_days_death, eventcode=2, ref_list=1 2 3);
+    %run_competing_risk(data=&data, exposure=smoking_status_5g, outcome=competing_event_lcsd, time_var=fu_days_death, eventcode=2, ref_list=1 3 5);
+    %run_competing_risk(data=&data, exposure=smoking_status_6g, outcome=competing_event_lcsd, time_var=fu_days_death, eventcode=2, ref_list=1 3 5);
+
+%mend;
+
+
+
+/* 2-1. Time-Varying Cox PH Model Macros */
+%macro run_tvc_models(data=, exposure=, outcome=, ref_list=);
+    %let num_refs = %sysfunc(countw(&ref_list));
+    
+    %do i = 1 %to &num_refs;
+        %let ref_val = %scan(&ref_list, &i);
+
+        /* Model 1: Age, Sex, Pack-year Adjusted */
+        title "TVC PH - &outcome (&exposure, Ref: &ref_val, Model 1: Age, Sex, Pack_years) - &data";
+        proc phreg data=&data;
+            class &exposure(ref="&ref_val") sex / ref=first;
+            model (t_start, t_final_end) * &outcome(0) = &exposure age sex pack_years_smoked / rl;
+        run;
+
+        /* Model 2: Fully Adjusted */
+        title "TVC PH - &outcome (&exposure, Ref: &ref_val, Model 2: Model 1 + Covariates) - &data";
+        proc phreg data=&data;
+            class &exposure(ref="&ref_val") sex household_income cci_group physical_activity alcohol_consumption underlying_copd underlying_ipf / ref=first;
+            model (t_start, t_final_end) * &outcome(0) = &exposure age sex pack_years_smoked bmi household_income alcohol_consumption physical_activity cci_group underlying_copd underlying_ipf / rl;
+        run;
+
+    %end;
+    title;
+%mend;
+
+
+
