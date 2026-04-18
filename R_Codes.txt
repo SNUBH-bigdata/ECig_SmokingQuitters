@@ -1,267 +1,201 @@
 # ==============================================================================
-# R Script for Generating and Merging Forest Plots (Panels a-d)
+# R Script for Forest Plot (180mm x 225mm)
+# Final Fixes: X-axis labels restored to .0 format, Panel widths re-adjusted
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# 0. Initialization & Environment Setup
-# ------------------------------------------------------------------------------
-# Install required packages if not already installed
-required_packages <- c("ggplot2", "patchwork", "magick")
+# 0. Load required packages
+required_packages <- c("ggplot2", "patchwork")
 new_packages <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
 if(length(new_packages)) install.packages(new_packages)
 
-# Load libraries
 library(ggplot2)
 library(patchwork)
-library(magick)
 
-# Set base directory for saving plots (Update this path if necessary)
+# Font mapping for Windows environment (can be omitted on Mac)
+windowsFonts(Arial = windowsFont("Arial"))
+
+# Set output directory path (Modify according to your local PC environment)
 base_path <- "C:/Users/user/Desktop/a/"
 
 # ------------------------------------------------------------------------------
-# 1. Panel (a) Lung cancer incidence
+# 1. Dataset Generation
 # ------------------------------------------------------------------------------
-data_A <- data.frame(
-  Reference = rep(c("Current smokers at baseline as reference", 
-                    "Ex-smokers with e-cigarette use as reference", 
-                    "Ex-smokers without e-cigarette use as reference"), each = 3),
-  Group = rep(c("Current smokers at baseline", 
-                "Ex-smokers with e-cigarette use", 
-                "Ex-smokers without e-cigarette use"), 3),
-  HR = c(1.00, 0.88, 0.56, 
-         1.14, 1.00, 0.64, 
-         1.78, 1.56, 1.00),
-  Lower = c(1.00, 0.69, 0.55, 
-            0.90, 1.00, 0.51, 
-            1.74, 1.24, 1.00),
-  Upper = c(1.00, 1.11, 0.57, 
-            1.44, 1.00, 0.81, 
-            1.82, 1.97, 1.00),
-  Label = c("1.00 (Reference)", "0.88 (0.69-1.11)", "0.56 (0.55-0.57)",
-            "1.14 (0.90-1.44)", "1.00 (Reference)", "0.64 (0.51-0.81)",
-            "1.78 (1.74-1.82)", "1.56 (1.24-1.97)", "1.00 (Reference)")
-)
-
-data_A$Group <- factor(data_A$Group, levels = rev(c("Current smokers at baseline", 
-                                                    "Ex-smokers with e-cigarette use", 
-                                                    "Ex-smokers without e-cigarette use")))
-
-create_plot_A <- function(ref_name, is_top = FALSE) {
-  df <- subset(data_A, Reference == ref_name)
-  p <- ggplot(df, aes(x = HR, y = Group)) +
-    geom_vline(xintercept = 1, linetype = "dotted", color = "grey40") +
-    geom_errorbarh(aes(xmin = Lower, xmax = Upper), height = 0.1, linewidth = 0.6) +
-    geom_point(shape = 15, size = 3, color = "darkblue") +
-    geom_text(aes(x = 0.015, label = Group), hjust = 0, size = 3.5, color = "black") +
-    annotate("text", x = 0.015, y = 3.8, label = ref_name, hjust = 0, fontface = "bold", size = 3.8) +
-    geom_text(aes(x = 10, label = Label), hjust = 0, size = 3.5) +
-    annotate("text", x = 10, y = 3.8, label = "Adjusted HR (95% CI)", hjust = 0, fontface = "bold", size = 3.8) +
-    scale_x_log10(breaks = c(0.2, 0.4, 0.6, 0.8, 1.0, 2.0, 4.0, 8.0)) +
-    labs(x = "Risk of lung cancer", y = NULL) +
-    theme_classic() +
-    theme(axis.line.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), 
-          axis.text.x = element_text(size = 9, color = "black"), axis.title.x = element_text(size = 11, face = "bold", margin = margin(t = 8)),
-          plot.margin = margin(t = 20, r = 150, b = 15, l = 170))
-  
-  if(is_top) {
-    p <- p + annotate("text", x = 0.015, y = 4.6, label = "(A) Lung cancer incidence", hjust = 0, fontface = "bold", size = 5) +
-      coord_cartesian(xlim = c(0.125, 8.0), ylim = c(0.5, 4.8), clip = "off")
-  } else {
-    p <- p + coord_cartesian(xlim = c(0.125, 8.0), ylim = c(0.5, 4.2), clip = "off")
-  }
-  return(p)
+create_dataset <- function(hr_vals, lower_vals, upper_vals) {
+  df <- data.frame(
+    Reference = rep(c("Current smokers at baseline as reference",
+                      "Ex-smokers with e-cigarette use as reference",
+                      "Ex-smokers without e-cigarette use as reference"), each = 3),
+    Group = rep(c("Current smokers at baseline",
+                  "Ex-smokers with e-cigarette use",
+                  "Ex-smokers without e-cigarette use"), 3),
+    HR = hr_vals, Lower = lower_vals, Upper = upper_vals
+  )
+  df$Group <- factor(df$Group, levels = rev(c("Current smokers at baseline", "Ex-smokers with e-cigarette use", "Ex-smokers without e-cigarette use")))
+  df$Reference <- factor(df$Reference, levels = c("Current smokers at baseline as reference", "Ex-smokers with e-cigarette use as reference", "Ex-smokers without e-cigarette use as reference"))
+ 
+  df$Label <- sprintf("%.2f (%.2f-%.2f)", df$HR, df$Lower, df$Upper)
+  df$Label <- ifelse(df$HR == 1.00 & df$Lower == 1.00 & df$Upper == 1.00, "1.00 (Reference)", df$Label)
+  return(df)
 }
 
-p1_A <- create_plot_A("Current smokers at baseline as reference", is_top = TRUE)
-p2_A <- create_plot_A("Ex-smokers with e-cigarette use as reference")
-p3_A <- create_plot_A("Ex-smokers without e-cigarette use as reference")
-
-plot_A <- (p1_A / p2_A / p3_A) + 
-  plot_annotation(theme = theme(plot.background = element_rect(color = "black", fill = NA, linewidth = 1.2), plot.margin = margin(20, 20, 20, 20)))
-
-# Save Panel A as TIFF
-ggsave(paste0(base_path, "Panel_A.tiff"), plot = plot_A, width = 11, height = 13, dpi = 300, device = "tiff")
-
-
-# ------------------------------------------------------------------------------
-# 2. Panel (b) Lung cancer-specific death
-# ------------------------------------------------------------------------------
-data_B <- data.frame(
-  Reference = rep(c("Current smokers at baseline as reference", 
-                    "Ex-smokers with e-cigarette use as reference", 
-                    "Ex-smokers without e-cigarette use as reference"), each = 3),
-  Group = rep(c("Current smokers at baseline", 
-                "Ex-smokers with e-cigarette use", 
-                "Ex-smokers without e-cigarette use"), 3),
-  HR = c(1.00, 0.83, 0.42, 1.20, 1.00, 0.50, 2.41, 2.00, 1.00),
-  Lower = c(1.00, 0.53, 0.40, 0.77, 1.00, 0.32, 2.32, 1.28, 1.00),
-  Upper = c(1.00, 1.31, 0.43, 1.88, 1.00, 0.78, 2.50, 3.15, 1.00),
-  Label = c("1.00 (Reference)", "0.83 (0.53-1.31)", "0.42 (0.40-0.43)",
-            "1.20 (0.77-1.88)", "1.00 (Reference)", "0.50 (0.32-0.78)",
-            "2.41 (2.32-2.50)", "2.00 (1.28-3.15)", "1.00 (Reference)")
+data_A <- create_dataset(
+  c(1.00, 1.14, 0.59, 0.88, 1.00, 0.52, 1.69, 1.91, 1.00),
+  c(1.00, 0.86, 0.58, 0.67, 1.00, 0.40, 1.64, 1.44, 1.00),
+  c(1.00, 1.50, 0.61, 1.17, 1.00, 0.69, 1.74, 2.53, 1.00)
 )
-data_B$Group <- factor(data_B$Group, levels = rev(unique(data_B$Group)))
+data_B <- create_dataset(
+  c(1.00, 0.95, 0.50, 1.05, 1.00, 0.52, 2.01, 1.92, 1.00),
+  c(1.00, 0.56, 0.47, 0.62, 1.00, 0.31, 1.92, 1.13, 1.00),
+  c(1.00, 1.61, 0.52, 1.78, 1.00, 0.88, 2.11, 3.24, 1.00)
+)
+data_C <- create_dataset(
+  c(1.00, 0.67, 0.69, 1.50, 1.00, 1.03, 1.46, 0.97, 1.00),
+  c(1.00, 0.52, 0.67, 1.17, 1.00, 0.80, 1.43, 0.76, 1.00),
+  c(1.00, 0.86, 0.70, 1.92, 1.00, 1.32, 1.49, 1.25, 1.00)
+)
+data_D <- create_dataset(
+  c(1.00, 0.97, 0.50, 1.03, 1.00, 0.52, 2.00, 1.93, 1.00),
+  c(1.00, 0.57, 0.48, 0.61, 1.00, 0.31, 1.90, 1.14, 1.00),
+  c(1.00, 1.64, 0.53, 1.75, 1.00, 0.88, 2.10, 3.27, 1.00)
+)
 
-create_plot_B <- function(ref_name, is_top = FALSE) {
-  df <- subset(data_B, Reference == ref_name)
-  p <- ggplot(df, aes(x = HR, y = Group)) +
-    geom_vline(xintercept = 1, linetype = "dotted", color = "grey40") +
-    geom_errorbarh(aes(xmin = Lower, xmax = Upper), height = 0.1, linewidth = 0.6) +
-    geom_point(shape = 15, size = 3, color = "darkblue") +
-    geom_text(aes(x = 0.015, label = Group), hjust = 0, size = 3.5, color = "black") +
-    annotate("text", x = 0.015, y = 3.8, label = ref_name, hjust = 0, fontface = "bold", size = 3.8) +
-    geom_text(aes(x = 10, label = Label), hjust = 0, size = 3.5) +
-    annotate("text", x = 10, y = 3.8, label = "Adjusted HR (95% CI)", hjust = 0, fontface = "bold", size = 3.8) +
-    scale_x_log10(breaks = c(0.2, 0.4, 0.6, 0.8, 1.0, 2.0, 4.0, 8.0)) +
-    labs(x = "Risk of lung cancer-specific death", y = NULL) +
-    theme_classic() +
-    theme(axis.line.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), 
-          axis.text.x = element_text(size = 9, color = "black"), axis.title.x = element_text(size = 11, face = "bold", margin = margin(t = 8)),
-          plot.margin = margin(t = 20, r = 150, b = 15, l = 170))
-  
-  if(is_top) {
-    p <- p + annotate("text", x = 0.015, y = 4.6, label = "(B) Lung cancer-specific death", hjust = 0, fontface = "bold", size = 5) +
-      coord_cartesian(xlim = c(0.125, 8.0), ylim = c(0.5, 4.8), clip = "off")
-  } else {
-    p <- p + coord_cartesian(xlim = c(0.125, 8.0), ylim = c(0.5, 4.2), clip = "off")
-  }
-  return(p)
+# ------------------------------------------------------------------------------
+# 2. Function to create individual plot rows
+# ------------------------------------------------------------------------------
+make_row <- function(df_sub, ref_name, x_label, hr_label = "Adjusted HR (95% CI)") {
+  txt_size <- 2.1 # Approx 6pt text
+  groups <- levels(df_sub$Group)
+ 
+  transparent_theme <- theme(
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.background = element_rect(fill = "transparent", color = NA)
+  )
+ 
+  # [Section 1] Left text panel (Group labels)
+  p_L <- ggplot(df_sub, aes(x = 0, y = Group)) +
+    geom_text(aes(label = Group), hjust = 0, size = txt_size, family = "Arial") +
+    scale_y_discrete(limits = groups, expand = expansion(add = c(0.5, 0.5))) +
+    coord_cartesian(xlim = c(0, 2), clip = "off") +
+    ggtitle(ref_name) +
+    theme_void() +
+    theme(plot.title = element_text(family = "Arial", face = "bold", size = 6, hjust = 0, margin=margin(b=3)),
+          plot.margin = margin(t=2, r=0, b=2, l=2, unit="mm")) +
+    transparent_theme
+ 
+  # [Section 2] Middle graph panel (Forest plot)
+  p_M <- ggplot(df_sub, aes(x = HR, y = Group)) +
+    annotate("segment", x = 1, xend = 1, y = 1, yend = 3, linetype = "dotted", color = "grey40", linewidth = 0.3) +
+    geom_errorbarh(aes(xmin = Lower, xmax = Upper), height = 0.2, linewidth = 0.4) +
+    geom_point(shape = 15, size = 1.2, color = "darkblue") +
+   
+    # [Modification 1] Restore X-axis breaks to 1.0, 2.0, 4.0, 8.0 format
+    scale_x_log10(breaks = c(0.2, 0.4, 0.6, 0.8, 1.0, 2.0, 4.0, 8.0),
+                  labels = c("0.2", "0.4", "0.6", "0.8", "1.0", "2.0", "4.0", "8.0")) +
+   
+    scale_y_discrete(limits = groups, expand = expansion(add = c(0.5, 0.5))) +
+    coord_cartesian(xlim = c(0.15, 8.5), clip = "off") +
+    labs(x = x_label) +
+    ggtitle(" ") +
+    theme_classic(base_family = "Arial", base_size = 6) +
+    theme(
+      axis.line.x = element_line(color="black", linewidth=0.3),
+      axis.line.y = element_blank(),
+      axis.ticks.x = element_line(color="black", linewidth=0.3),
+      axis.ticks.y = element_blank(),
+      axis.text.y = element_blank(),
+      axis.title.y = element_blank(),
+      axis.text.x = element_text(size = 4.2, color="black"), # Keep font size small for visibility
+      axis.title.x = element_text(size = 6, face="bold", margin=margin(t=2)),
+      plot.title = element_text(size = 6, margin=margin(b=3)),
+      plot.margin = margin(t=2, r=2, b=2, l=2, unit="mm")
+    ) +
+    transparent_theme
+ 
+  # [Section 3] Right text panel (Values)
+  p_R <- ggplot(df_sub, aes(x = 0, y = Group)) +
+    geom_text(aes(label = Label), hjust = 0, size = txt_size, family = "Arial") +
+    scale_y_discrete(limits = groups, expand = expansion(add = c(0.5, 0.5))) +
+    coord_cartesian(xlim = c(0, 3.0), clip = "off") +
+    ggtitle(hr_label) +
+    theme_void() +
+    theme(plot.title = element_text(family = "Arial", face = "bold", size = 6, hjust = 0, margin=margin(b=3)),
+          plot.margin = margin(t=2, r=10, b=2, l=0, unit="mm")) +
+    transparent_theme
+ 
+  # [Modification 2] Adjusted panel width ratios to provide sufficient space for the X-axis
+  row_plot <- p_L + p_M + p_R + plot_layout(widths = c(3.5, 5.0, 1.0))
+  return(row_plot)
 }
 
-plot_B <- (create_plot_B("Current smokers at baseline as reference", TRUE) / 
-           create_plot_B("Ex-smokers with e-cigarette use as reference") / 
-           create_plot_B("Ex-smokers without e-cigarette use as reference")) + 
-  plot_annotation(theme = theme(plot.background = element_rect(color = "black", fill = NA, linewidth = 1.2), plot.margin = margin(20, 20, 20, 20)))
-
-# Save Panel B as TIFF
-ggsave(paste0(base_path, "Panel_B.tiff"), plot = plot_B, width = 11, height = 13, dpi = 300, device = "tiff")
-
-
 # ------------------------------------------------------------------------------
-# 3. Panel (c) All-cause mortality
+# 3. Function to stack 3 rows into a single panel
 # ------------------------------------------------------------------------------
-data_C <- data.frame(
-  Reference = rep(c("Current smokers at baseline as reference", 
-                    "Ex-smokers with e-cigarette use as reference", 
-                    "Ex-smokers without e-cigarette use as reference"), each = 3),
-  Group = rep(c("Current smokers at baseline", 
-                "Ex-smokers with e-cigarette use", 
-                "Ex-smokers without e-cigarette use"), 3),
-  HR = c(1.00, 0.77, 0.63, 1.31, 1.00, 0.82, 1.59, 1.22, 1.00),
-  Lower = c(1.00, 0.66, 0.62, 1.12, 1.00, 0.71, 1.57, 1.05, 1.00),
-  Upper = c(1.00, 0.89, 0.64, 1.52, 1.00, 0.96, 1.61, 1.41, 1.00),
-  Label = c("1.00 (Reference)", "0.77 (0.66-0.89)", "0.63 (0.62-0.64)",
-            "1.31 (1.12-1.52)", "1.00 (Reference)", "0.82 (0.71-0.96)",
-            "1.59 (1.57-1.61)", "1.22 (1.05-1.41)", "1.00 (Reference)")
-)
-data_C$Group <- factor(data_C$Group, levels = rev(unique(data_C$Group)))
-
-create_plot_C <- function(ref_name, is_top = FALSE) {
-  df <- subset(data_C, Reference == ref_name)
-  p <- ggplot(df, aes(x = HR, y = Group)) +
-    geom_vline(xintercept = 1, linetype = "dotted", color = "grey40") +
-    geom_errorbarh(aes(xmin = Lower, xmax = Upper), height = 0.1, linewidth = 0.6) +
-    geom_point(shape = 15, size = 3, color = "darkblue") +
-    geom_text(aes(x = 0.015, label = Group), hjust = 0, size = 3.5, color = "black") +
-    annotate("text", x = 0.015, y = 3.8, label = ref_name, hjust = 0, fontface = "bold", size = 3.8) +
-    geom_text(aes(x = 10, label = Label), hjust = 0, size = 3.5) +
-    annotate("text", x = 10, y = 3.8, label = "Adjusted HR (95% CI)", hjust = 0, fontface = "bold", size = 3.8) +
-    scale_x_log10(breaks = c(0.2, 0.4, 0.6, 0.8, 1.0, 2.0, 4.0, 8.0)) +
-    labs(x = "Risk of all-cause mortality", y = NULL) +
-    theme_classic() +
-    theme(axis.line.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), 
-          axis.text.x = element_text(size = 9, color = "black"), axis.title.x = element_text(size = 11, face = "bold", margin = margin(t = 8)),
-          plot.margin = margin(t = 20, r = 150, b = 15, l = 170))
-  
-  if(is_top) {
-    p <- p + annotate("text", x = 0.015, y = 4.6, label = "(C) All-cause mortality", hjust = 0, fontface = "bold", size = 5) +
-      coord_cartesian(xlim = c(0.125, 8.0), ylim = c(0.5, 4.8), clip = "off")
-  } else {
-    p <- p + coord_cartesian(xlim = c(0.125, 8.0), ylim = c(0.5, 4.2), clip = "off")
-  }
-  return(p)
+build_panel <- function(df, panel_title, x_label, hr_label = "Adjusted HR (95% CI)") {
+  refs <- levels(df$Reference)
+ 
+  row1 <- make_row(subset(df, Reference == refs[1]), refs[1], x_label, hr_label)
+  row2 <- make_row(subset(df, Reference == refs[2]), refs[2], x_label, hr_label)
+  row3 <- make_row(subset(df, Reference == refs[3]), refs[3], x_label, hr_label)
+ 
+  panel_comb <- (row1 / row2 / row3) +
+    plot_annotation(
+      title = panel_title,
+      theme = theme(
+        plot.title = element_text(family = "Arial", face = "bold", size = 7, hjust = 0),
+        plot.background = element_rect(color = "black", fill = "white", linewidth = 0.5),
+        plot.margin = margin(2, 2, 2, 2, "mm")
+      )
+    )
+  return(panel_comb)
 }
 
-plot_C <- (create_plot_C("Current smokers at baseline as reference", TRUE) / 
-           create_plot_C("Ex-smokers with e-cigarette use as reference") / 
-           create_plot_C("Ex-smokers without e-cigarette use as reference")) + 
-  plot_annotation(theme = theme(plot.background = element_rect(color = "black", fill = NA, linewidth = 1.2), plot.margin = margin(20, 20, 20, 20)))
-
-# Save Panel C as TIFF
-ggsave(paste0(base_path, "Panel_C.tiff"), plot = plot_C, width = 11, height = 13, dpi = 300, device = "tiff")
-
+# Construct 4 independent panels
+plot_A <- build_panel(data_A, "(a) Lung cancer incidence", "Risk of lung cancer")
+plot_B <- build_panel(data_B, "(b) Lung cancer-specific death", "Risk of lung cancer-specific death")
+plot_C <- build_panel(data_C, "(c) All-cause mortality", "Risk of all-cause mortality")
+plot_D <- build_panel(data_D, "(d) Lung cancer-specific death (competing risk analysis)", "Risk of lung cancer-specific death", hr_label = "Adjusted SHR (95% CI)")
 
 # ------------------------------------------------------------------------------
-# 4. Panel (d) Lung cancer-specific death (competing risk analysis)
+# 4. Final 2x2 Grid Merging and PDF Export
 # ------------------------------------------------------------------------------
-data_D <- data.frame(
-  Reference = rep(c("Current smokers at baseline as reference", 
-                    "Ex-smokers with e-cigarette use as reference", 
-                    "Ex-smokers without e-cigarette use as reference"), each = 3),
-  Group = rep(c("Current smokers at baseline", 
-                "Ex-smokers with e-cigarette use", 
-                "Ex-smokers without e-cigarette use"), 3),
-  HR = c(1.00, 0.83, 0.42, 1.21, 1.00, 0.51, 2.38, 1.97, 1.00),
-  Lower = c(1.00, 0.53, 0.41, 0.77, 1.00, 0.32, 2.29, 1.26, 1.00),
-  Upper = c(1.00, 1.30, 0.44, 1.89, 1.00, 0.80, 2.47, 3.09, 1.00),
-  Label = c("1.00 (Reference)", "0.83 (0.53-1.30)", "0.42 (0.41-0.44)",
-            "1.21 (0.77-1.89)", "1.00 (Reference)", "0.51 (0.32-0.80)",
-            "2.38 (2.29-2.47)", "1.97 (1.26-3.09)", "1.00 (Reference)")
-)
-data_D$Group <- factor(data_D$Group, levels = rev(unique(data_D$Group)))
+final_grid <- (wrap_elements(full = plot_A) | wrap_elements(full = plot_B)) /
+  (wrap_elements(full = plot_C) | wrap_elements(full = plot_D))
 
-create_plot_D <- function(ref_name, is_top = FALSE) {
-  df <- subset(data_D, Reference == ref_name)
-  p <- ggplot(df, aes(x = HR, y = Group)) +
-    geom_vline(xintercept = 1, linetype = "dotted", color = "grey40") +
-    geom_errorbarh(aes(xmin = Lower, xmax = Upper), height = 0.1, linewidth = 0.6) +
-    geom_point(shape = 15, size = 3, color = "darkblue") +
-    geom_text(aes(x = 0.015, label = Group), hjust = 0, size = 3.5, color = "black") +
-    annotate("text", x = 0.015, y = 3.8, label = ref_name, hjust = 0, fontface = "bold", size = 3.8) +
-    geom_text(aes(x = 10, label = Label), hjust = 0, size = 3.5) +
-    annotate("text", x = 10, y = 3.8, label = "Adjusted SHR (95% CI)", hjust = 0, fontface = "bold", size = 3.8) +
-    scale_x_log10(breaks = c(0.2, 0.4, 0.6, 0.8, 1.0, 2.0, 4.0, 8.0)) +
-    labs(x = "Risk of lung cancer-specific death", y = NULL) +
-    theme_classic() +
-    theme(axis.line.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), 
-          axis.text.x = element_text(size = 9, color = "black"), axis.title.x = element_text(size = 11, face = "bold", margin = margin(t = 8)),
-          plot.margin = margin(t = 20, r = 150, b = 15, l = 170))
-  
-  if(is_top) {
-    p <- p + annotate("text", x = 0.015, y = 4.6, label = "(D) Lung cancer-specific death (competing risk analysis)", hjust = 0, fontface = "bold", size = 5) +
-      coord_cartesian(xlim = c(0.125, 8.0), ylim = c(0.5, 4.8), clip = "off")
-  } else {
-    p <- p + coord_cartesian(xlim = c(0.125, 8.0), ylim = c(0.5, 4.2), clip = "off")
-  }
-  return(p)
-}
+# Output as Vector PDF
+out_file <- paste0(base_path, "Merged_Figure_Nature_Perfect_X_Axis.pdf")
+ggsave(filename = out_file, plot = final_grid, device = cairo_pdf,
+       width = 180, height = 225, units = "mm")
 
-plot_D <- (create_plot_D("Current smokers at baseline as reference", TRUE) / 
-           create_plot_D("Ex-smokers with e-cigarette use as reference") / 
-           create_plot_D("Ex-smokers without e-cigarette use as reference")) + 
-  plot_annotation(theme = theme(plot.background = element_rect(color = "black", fill = NA, linewidth = 1.2), plot.margin = margin(20, 20, 20, 20)))
-
-# Save Panel D as TIFF
-ggsave(paste0(base_path, "Panel_D.tiff"), plot = plot_D, width = 11, height = 13, dpi = 300, device = "tiff")
-
+print(paste("Data processing complete. Final Vector PDF saved at:", out_file))
 
 # ------------------------------------------------------------------------------
-# 5. Merge Panels into a 2x2 Grid using magick
+# 5. Export as Editable PPTX (Resolved pipe operator compatibility)
 # ------------------------------------------------------------------------------
-# Read the generated TIFF files
-img_A <- image_read(paste0(base_path, "Panel_A.tiff"))
-img_B <- image_read(paste0(base_path, "Panel_B.tiff"))
-img_C <- image_read(paste0(base_path, "Panel_C.tiff"))
-img_D <- image_read(paste0(base_path, "Panel_D.tiff"))
+# Load required packages for PPTX export
+library(rvg)
+library(officer)
 
-# Combine horizontally (Left-Right)
-row_top <- image_append(c(img_A, img_B), stack = FALSE) # Top row: A | B
-row_bot <- image_append(c(img_C, img_D), stack = FALSE) # Bottom row: C | D
+out_file_ppt <- paste0(base_path, "Merged_Figure_Nature_Editable.pptx")
 
-# Combine vertically (Top-Bottom)
-final_grid <- image_append(c(row_top, row_bot), stack = TRUE)
+# Step 1. Create an empty PowerPoint object
+my_pres <- read_pptx()
 
-# Save the final 2x2 figure (High resolution: 3000 DPI, TIFF format for publication)
+# Step 2. Add a blank slide
+my_pres <- add_slide(my_pres, layout = "Blank", master = "Office Theme")
+
+# Step 3. Convert patchwork object to editable vector format (DrawingML)
+editable_graph <- dml(ggobj = final_grid)
+
+# Step 4. Insert graph into slide (Specify location and size, unit: inches)
+my_pres <- ph_with(my_pres,
+                   value = editable_graph,
+                   location = ph_location(left = 0, top = 0,
+                                          width = 180 / 25.4, height = 225 / 25.4))
+
+# Step 5. Save PPTX file
+print(my_pres, target = out_file_ppt)
+
+print(paste("PPTX export complete. Saved at:", out_file_ppt))
 out_file <- paste0(base_path, "Merged_Figure_3000dpi.tiff")
 image_write(final_grid, path = out_file, format = "tiff", density = "3000x3000")
 
